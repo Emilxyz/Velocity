@@ -399,6 +399,9 @@ public enum StateRegistry {
           map(0x0C, MINECRAFT_1_20_5, false),
           map(0x0E, MINECRAFT_1_21_2, false),
           map(0x0F, MINECRAFT_1_21_6, false));
+      serverbound.register(
+          ServerboundCustomClickActionPacket.class, ServerboundCustomClickActionPacket::new,
+          map(0x41, MINECRAFT_1_21_6, false));
 
       clientbound.register(
           BossBarPacket.class,

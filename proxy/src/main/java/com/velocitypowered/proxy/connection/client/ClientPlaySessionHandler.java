@@ -26,6 +26,7 @@ import com.velocitypowered.api.event.player.CookieReceiveEvent;
 import com.velocitypowered.api.event.player.PlayerChannelRegisterEvent;
 import com.velocitypowered.api.event.player.PlayerChannelUnregisterEvent;
 import com.velocitypowered.api.event.player.PlayerClientBrandEvent;
+import com.velocitypowered.api.event.player.PlayerCustomClickEvent;
 import com.velocitypowered.api.event.player.TabCompleteEvent;
 import com.velocitypowered.api.event.player.configuration.PlayerEnteredConfigurationEvent;
 import com.velocitypowered.api.network.ProtocolVersion;
@@ -49,6 +50,7 @@ import com.velocitypowered.proxy.protocol.packet.PluginMessagePacket;
 import com.velocitypowered.proxy.protocol.packet.ResourcePackResponsePacket;
 import com.velocitypowered.proxy.protocol.packet.RespawnPacket;
 import com.velocitypowered.proxy.protocol.packet.ServerboundCookieResponsePacket;
+import com.velocitypowered.proxy.protocol.packet.ServerboundCustomClickActionPacket;
 import com.velocitypowered.proxy.protocol.packet.TabCompleteRequestPacket;
 import com.velocitypowered.proxy.protocol.packet.TabCompleteResponsePacket;
 import com.velocitypowered.proxy.protocol.packet.TabCompleteResponsePacket.Offer;
@@ -457,6 +459,19 @@ public class ClientPlaySessionHandler implements MinecraftSessionHandler {
     // Forward the packet as normal, but discard any chat state we have queued - the client will do this too
     player.discardChatQueue();
     return false;
+  }
+
+  @Override
+  public boolean handle(ServerboundCustomClickActionPacket packet) {
+    this.server.getEventManager().fire(new PlayerCustomClickEvent(this.player,
+            packet.getIdentifier(), packet.payloadBinaryTagHolder()))
+        .thenAcceptAsync(event -> {
+          final VelocityServerConnection serverConnection = this.player.getConnectedServer();
+          if (serverConnection != null && event.getResult().isAllowed()) {
+            serverConnection.ensureConnected().write(packet);
+          }
+        }, this.player.getConnection().eventLoop());
+    return true;
   }
 
   @Override

@@ -20,6 +20,7 @@ package com.velocitypowered.proxy.connection.client;
 import com.velocitypowered.api.event.connection.PluginMessageEvent;
 import com.velocitypowered.api.event.player.CookieReceiveEvent;
 import com.velocitypowered.api.event.player.PlayerClientBrandEvent;
+import com.velocitypowered.api.event.player.PlayerCustomClickEvent;
 import com.velocitypowered.api.event.player.configuration.PlayerConfigurationEvent;
 import com.velocitypowered.api.event.player.configuration.PlayerFinishConfigurationEvent;
 import com.velocitypowered.api.event.player.configuration.PlayerFinishedConfigurationEvent;
@@ -209,12 +210,15 @@ public class ClientConfigSessionHandler implements MinecraftSessionHandler {
 
   @Override
   public boolean handle(ServerboundCustomClickActionPacket packet) {
-    if (player.getConnectionInFlight() != null) {
-      player.getConnectionInFlight().ensureConnected().write(packet.retain());
-      return true;
-    }
-
-    return false;
+    this.server.getEventManager().fire(new PlayerCustomClickEvent(this.player,
+            packet.getIdentifier(), packet.payloadBinaryTagHolder()))
+        .thenAcceptAsync(event -> {
+          final VelocityServerConnection serverConnection = this.player.getConnectionInFlight();
+          if (serverConnection != null && event.getResult().isAllowed()) {
+            serverConnection.ensureConnected().write(packet);
+          }
+        }, this.player.getConnection().eventLoop());
+    return true;
   }
 
   @Override

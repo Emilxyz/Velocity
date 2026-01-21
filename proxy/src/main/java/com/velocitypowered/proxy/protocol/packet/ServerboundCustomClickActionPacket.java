@@ -22,23 +22,65 @@ import com.velocitypowered.proxy.connection.MinecraftSessionHandler;
 import com.velocitypowered.proxy.protocol.MinecraftPacket;
 import com.velocitypowered.proxy.protocol.ProtocolUtils;
 import com.velocitypowered.proxy.protocol.ProtocolUtils.Direction;
-import com.velocitypowered.proxy.protocol.util.DeferredByteBufHolder;
 import io.netty.buffer.ByteBuf;
+import java.io.IOException;
+import net.kyori.adventure.key.Key;
+import net.kyori.adventure.nbt.BinaryTag;
+import net.kyori.adventure.nbt.BinaryTagIO;
+import net.kyori.adventure.nbt.EndBinaryTag;
+import net.kyori.adventure.nbt.TagStringIO;
+import net.kyori.adventure.nbt.api.BinaryTagHolder;
+import net.kyori.adventure.util.Codec;
+import org.checkerframework.checker.nullness.qual.Nullable;
 
-public class ServerboundCustomClickActionPacket extends DeferredByteBufHolder implements MinecraftPacket {
+public class ServerboundCustomClickActionPacket implements MinecraftPacket {
+
+  private static final int MAX_PAYLOAD_SIZE = 64 * 1024;
+
+  private static final Codec<BinaryTag, String, IOException, IOException> SNBT_CODEC = Codec.codec(
+      encoded -> TagStringIO.tagStringIO().asTag(encoded),
+      decoded -> TagStringIO.tagStringIO().asString(decoded)
+  );
+
+  private Key identifier;
+  private int payloadSize;
+  private BinaryTag payload;
 
   public ServerboundCustomClickActionPacket() {
-    super(null);
+  }
+
+  public Key getIdentifier() {
+    return this.identifier;
+  }
+
+  public @Nullable BinaryTagHolder payloadBinaryTagHolder() {
+    if (this.payload != null && !(payload instanceof EndBinaryTag)) {
+      try {
+        return BinaryTagHolder.encode(this.payload, SNBT_CODEC);
+      } catch (IOException e) {
+        throw new RuntimeException("Could not encode tag payload", e);
+      }
+    }
+    return null;
   }
 
   @Override
-  public void decode(ByteBuf buf, ProtocolUtils.Direction direction, ProtocolVersion version) {
-    replace(buf.readRetainedSlice(buf.readableBytes()));
+  public void decode(ByteBuf buf, Direction direction, ProtocolVersion version) {
+    this.identifier = ProtocolUtils.readKey(buf);
+    this.payloadSize = ProtocolUtils.readVarInt(buf);
+    if (this.payloadSize > MAX_PAYLOAD_SIZE) {
+      throw new IllegalArgumentException("Payload size " + this.payloadSize
+          + " exceeds maximum of " + MAX_PAYLOAD_SIZE);
+    }
+    this.payload = ProtocolUtils.readBinaryTag(buf, version, BinaryTagIO.reader(this.payloadSize));
   }
 
   @Override
-  public void encode(ByteBuf buf, ProtocolUtils.Direction direction, ProtocolVersion version) {
-    buf.writeBytes(content());
+  public void encode(ByteBuf buf, Direction direction, ProtocolVersion version) {
+    ProtocolUtils.writeKey(buf, this.identifier);
+    ProtocolUtils.writeVarInt(buf, this.payloadSize);
+    ProtocolUtils.writeBinaryTag(buf, version,
+        this.payload == null ? EndBinaryTag.endBinaryTag() : this.payload);
   }
 
   @Override
@@ -48,6 +90,8 @@ public class ServerboundCustomClickActionPacket extends DeferredByteBufHolder im
 
   @Override
   public int encodeSizeHint(Direction direction, ProtocolVersion version) {
-    return content().readableBytes();
+    return ProtocolUtils.stringSizeHint(this.identifier.asString())
+        + ProtocolUtils.varIntBytes(this.payloadSize)
+        + this.payloadSize;
   }
 }
